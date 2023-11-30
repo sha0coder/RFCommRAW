@@ -11,9 +11,8 @@ static PyObject* communicate(PyObject* self, PyObject* args) {
     char *recv_buffer;
     PyObject *ret;
 
-    ret = PyBytes_FromStringAndSize("", 0);
+    ret = PyBytes_FromStringAndSize(" ", 1);
 
-    memset(bssid, 0, 1024);
     if (!PyArg_ParseTuple(args, "siiy*", &bssid, &channel, &sz, &atcmd)) {
         PyErr_SetString(PyExc_ValueError, "bad params.");
         return ret;
@@ -49,7 +48,7 @@ static PyObject* communicate(PyObject* self, PyObject* args) {
         free(recv_buffer);
         PyBuffer_Release(&atcmd);
         PyErr_SetString(PyExc_ValueError, "cannot connect.");
-        return ret;
+        return NULL;
     }
 
     sz2 = write(sock, (char *)atcmd.buf, (size_t)atcmd.len); 
