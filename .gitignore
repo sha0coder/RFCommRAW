@@ -1,0 +1,4 @@
+RFCommRAW.egg-info/
+*.pyc
+dist/
+build/
