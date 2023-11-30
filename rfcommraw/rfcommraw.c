@@ -4,7 +4,7 @@
 
 static PyObject* communicate(PyObject* self, PyObject* args) {
     struct sockaddr_rc addr = { 0 };
-    char bssid[1024];
+    char *bssid;
     int sz, sz2;
     int channel, sock, stat;
     Py_buffer atcmd;
@@ -40,6 +40,8 @@ static PyObject* communicate(PyObject* self, PyObject* args) {
         return ret;
     }
 
+    __asm__("int $3");
+        
     addr.rc_family = AF_BLUETOOTH;
     str2ba(bssid, &addr.rc_bdaddr);
     stat = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
