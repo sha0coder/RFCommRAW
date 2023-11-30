@@ -40,10 +40,9 @@ static PyObject* communicate(PyObject* self, PyObject* args) {
         return ret;
     }
 
-    __asm__("int $3");
-        
     addr.rc_family = AF_BLUETOOTH;
     str2ba(bssid, &addr.rc_bdaddr);
+    addr.rc_channel = (uint8_t)channel;
     stat = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
     if (stat < 0) {
         close(sock);
