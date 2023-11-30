@@ -64,6 +64,13 @@ static PyObject* communicate(PyObject* self, PyObject* args) {
     sz2 = recv(sock, recv_buffer, sz, 0);
     close(sock);
 
+    if (sz2 < 0) {
+        free(recv_buffer);
+        PyBuffer_Release(&atcmd);
+        PyErr_SetString(PyExc_ValueError, "no data received.");
+        return ret;
+    }
+
     ret = PyBytes_FromStringAndSize(recv_buffer, sz2);
 
     free(recv_buffer);
