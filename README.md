@@ -11,7 +11,7 @@ pip install RFCommRAW
 >>> RFCommRAW.interfaces()
 [0]
 >>> RFCommRAW.scan(0)
-['A0:94:1A:87:50:E6']
+['A0:94:1A:87:50:E7']
 
 
 for channel in range(0,0xffff):
