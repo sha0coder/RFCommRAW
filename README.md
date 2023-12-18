@@ -1,16 +1,27 @@
 # Install
 
+```bash
 sudo apt install libbluetooth-dev
-
 pip install RFCommRAW
-
+```
 
 # Usage
 
-import RFCommRAW
+```python
+>>> RFCommRAW.interfaces()
+[0]
+>>> RFCommRAW.scan(0)
+['A0:94:1A:87:50:E6']
 
-response = RFCommRAW.communicate('CA:FE:BA:BE:CA:FE', 10, 1024, b'AAAA\r\n')
 
-// params:  bssid, channel, recv-size, bytes-to-send
+for channel in range(0,0xffff):
+    try:
+        r = RFCommRAW.communicate('A0:94:1A:87:50:E7',channel,1024,b'AT\r\n') 
+        # params:  bssid, channel, recv-size, bytes-to-send
+        if r:
+            print(f'channel {channel}: {r}')
+    except:
+        pass
+```
 
 
