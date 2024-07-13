@@ -1,13 +1,16 @@
 #include <Python.h>
 #include <sys/uio.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/rfcomm.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
-#include <bluetooth/rfcomm.h>
 //#include <bluetooth/l2cap.h>
 #include <bluetooth/sdp.h>
 #include <bluetooth/sdp_lib.h>
@@ -197,13 +200,15 @@ static PyObject *lescan(PyObject *self, PyObject *args) {
 static PyObject *communicate(PyObject *self, PyObject *args) {
     struct sockaddr_rc addr = { 0 };
     char *bssid;
-    int sz, sz2;
-    int channel, sock, stat;
+    int sz, sz2, timeout, result;
+    int channel, sock, stat, flags;
     Py_buffer atcmd;
     char *recv_buffer;
     PyObject *ret;
+    fd_set write_fds, read_fds;
+    struct timeval tv;
 
-    if (!PyArg_ParseTuple(args, "siiy*", &bssid, &channel, &sz, &atcmd)) {
+    if (!PyArg_ParseTuple(args, "siiiy*", &bssid, &channel, &sz, &timeout, &atcmd)) {
         PyErr_SetString(PyExc_ValueError, "bad params.");
         return NULL;
     }
@@ -232,39 +237,84 @@ static PyObject *communicate(PyObject *self, PyObject *args) {
     addr.rc_family = AF_BLUETOOTH;
     str2ba(bssid, &addr.rc_bdaddr);
     addr.rc_channel = (uint8_t)channel;
+
+    flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
     stat = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
     if (stat < 0) {
-        close(sock);
-        free(recv_buffer);
-        PyBuffer_Release(&atcmd);
-        PyErr_SetString(PyExc_ValueError, "cannot connect.");
-        return NULL;
+        if (errno == EINPROGRESS) {
+            FD_ZERO(&read_fds);
+            FD_ZERO(&write_fds);
+            FD_SET(sock, &read_fds);
+            FD_SET(sock, &write_fds);
+            tv.tv_sec = timeout;
+            tv.tv_usec = 0;
+
+            result = select(sock + 1, &read_fds, &write_fds, NULL, &tv);
+            if (result == 0) {
+                close(sock);
+                free(recv_buffer);
+                PyBuffer_Release(&atcmd);
+                PyErr_SetString(PyExc_ValueError, "channel connection timeout.");
+                return NULL;
+
+            } else if (result == -1) {
+                close(sock);
+                free(recv_buffer);
+                PyBuffer_Release(&atcmd);
+                PyErr_SetString(PyExc_ValueError, "channel connection error.");
+                return NULL;
+
+            } else {
+
+                // ready to write
+                if (FD_ISSET(sock, &write_fds)) {
+                    sz2 = write(sock, (char *)atcmd.buf, (size_t)atcmd.len); 
+                    if (sz2 < atcmd.len) {
+                        close(sock);
+                        free(recv_buffer);
+                        PyBuffer_Release(&atcmd);
+                        PyErr_SetString(PyExc_ValueError, "it was not possible to send the data totally.");
+                        return NULL;
+                    }
+                }
+
+                // ready to read
+                if (FD_ISSET(sock, &read_fds)) {
+                    memset(recv_buffer, 0, sz);
+                    sz2 = recv(sock, recv_buffer, sz, 0);
+                    if (sz2 < 0) {
+                        free(recv_buffer);
+                        PyBuffer_Release(&atcmd);
+                        PyErr_SetString(PyExc_ValueError, "no data received.");
+                        return NULL;
+                    }
+
+                    close(sock);
+                    ret = PyBytes_FromStringAndSize(recv_buffer, sz2);
+                    free(recv_buffer);
+                    PyBuffer_Release(&atcmd);
+                    return ret;
+                }
+            }
+
+
+        } else {
+            close(sock);
+            free(recv_buffer);
+            PyBuffer_Release(&atcmd);
+            PyErr_SetString(PyExc_ValueError, "cannot connect.");
+            return NULL;
+        }
     }
 
-    sz2 = write(sock, (char *)atcmd.buf, (size_t)atcmd.len); 
-    if (sz2 < atcmd.len) {
-        close(sock);
-        free(recv_buffer);
-        PyBuffer_Release(&atcmd);
-        PyErr_SetString(PyExc_ValueError, "it was not possible to send the data totally.");
-        return NULL;
-    }
 
-    sz2 = recv(sock, recv_buffer, sz, 0);
     close(sock);
-
-    if (sz2 < 0) {
-        free(recv_buffer);
-        PyBuffer_Release(&atcmd);
-        PyErr_SetString(PyExc_ValueError, "no data received.");
-        return NULL;
-    }
-
-    ret = PyBytes_FromStringAndSize(recv_buffer, sz2);
-
     free(recv_buffer);
     PyBuffer_Release(&atcmd);
-    return ret;
+    PyErr_SetString(PyExc_ValueError, "unreachable.");
+    return NULL;
 }
 
 static PyMethodDef ModMethods[] = {
